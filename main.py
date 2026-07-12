@@ -3,7 +3,7 @@ from torch.optim import AdamW
 import time
 
 from data import get_agnews_dataloader
-from model import create_model, train_model, evaluate_saved_model
+from model import create_model, train_model, evaluate_saved_model, quantize_model
 
 
 # これはサンプルの Python スクリプトです。
@@ -80,20 +80,40 @@ def baseline_bert_exp(training_layers, device, restart=False):
 
     print(training_result["best_accuracy"])
 
-def baseline_bert_eval(device):
+def model_eval(model_name, model_path, device):
     """
-    Evaluate trained BERT baseline model.
+    Evaluate trained model, and get its accuracy, time, and size.
+    :param model_name: Name of the model to load.
+    :param model_path: Path which stores model states.
+    :param device: Device to use.
+    """
+    model = create_model(model_name, device)
+    agnews_test_loader = get_agnews_dataloader(model_name, 16, test=True)
+    result = evaluate_saved_model(model, model_path, agnews_test_loader, device)
+
+    print(f"Accuracy: {result['Accuracy'] * 100:.2f}%")
+    print(f"Total Runtime: {result['Total Runtime']:.2f}sec")
+    print(f"Latency: {result['Runtime Per Sample'] * 1000:.2f}ms/sample")
+    print(f"Throughput: {result['Throughput']:.2f}samples/sec")
+    print(f"Size: {result['Size']:.2f}MB")
+    print(f"# Parameters: {result['Parameters']}")
+
+def bert_quantization():
+    """
+    Experiment to quantize the model.
     :param device: Device to use.
     """
     model_name = "bert-base-uncased"
+    device = torch.device("cpu")
     model = create_model(model_name, device)
-
-    model_path = "models/test_model.pth"
 
     batch_size = 16
     agnews_test_loader = get_agnews_dataloader(model_name, batch_size, test=True)
 
-    result = evaluate_saved_model(model, model_path, agnews_test_loader, device)
+    old_model_path = "models/test_model.pth"
+    new_model_path = "models/quantized_model.pth"
+
+    result = quantize_model(model, agnews_test_loader, old_model_path, new_model_path, device)
 
     print(f"Accuracy: {result['Accuracy'] * 100:.2f}%")
     print(f"Total Runtime: {result['Total Runtime']:.2f}sec")
@@ -131,7 +151,8 @@ if __name__ == '__main__':
     print("0. Test GPU.")
     print("1. Baseline BERT training.")
     print("2. Baseline BERT evaluation.")
-    exp_num = accept_num_input(0, 2)
+    print("3. BERT Quantization.")
+    exp_num = accept_num_input(0, 3)
     print()
 
     if exp_num == 0:
@@ -152,7 +173,17 @@ if __name__ == '__main__':
 
         baseline_bert_exp(training_parameters, device, restart)
     elif exp_num == 2:
-        baseline_bert_eval(device)
+        model_eval("bert-base-uncased", "models/test_model.pth", device)
+    elif exp_num == 3:
+        bert_quantization()
+        """
+        Accuracy: 91.29%
+        Total Runtime: 1449.21sec
+        Latency: 190.68ms/sample
+        Throughput: 5.24samples/sec
+        Size: 173.09MB
+        # Parameters: 23874048
+        """
 
 
 # PyCharm のヘルプは https://www.jetbrains.com/help/pycharm/ を参照してください
